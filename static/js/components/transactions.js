@@ -1,0 +1,154 @@
+class TransactionsComponent {
+    constructor() {
+        this.transactions = [];
+        this.accounts = [];
+        this.initEventListeners();
+    }
+
+    initEventListeners(){
+        // filter controls
+        document.getElementById('transaction-account').addEventListener('change',this.filterTransactions.bind(this));
+        document.getElementById('transaction-type').addEventListener('change',this.filterTransactions.bind(this));
+    }
+
+    setData(transactions, accounts) {
+        this.transactions = transactions || [];
+        this.accounts = accounts || [];
+        this.updateTransactionsUI();
+    }
+
+    updateTransactionsUI() {
+        // populate account filter
+        const accountSelect = document.getElementById('transaction-account');
+        accountSelect.innerHTML = '<option value="all">All Accounts</option>';
+
+        this.accounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account.account_id;
+            option.textContent = `${account.account_type} - ${account.account_number}`;
+            accountSelect.appendChild(option);
+        });
+
+        // disp transactions
+        this.filterTransactions();
+    }
+
+    filterTransactions() {
+        const accountId = document.getElementById('transaction-account').value;
+        const transactionType = document.getElementById('transaction-type').value;
+        const transactionsList = document.getElementById('transactions-list');
+
+        let filteredTransactions = [...this.transactions];
+
+        if(accountId !== 'all'){ filteredTransactions = filteredTransactions.filter(t => t.account_id === accountId || t.destination_account_id === accountId);}
+
+        if(transactionType !== 'all'){ filteredTransactions = filteredTransactions.filter(t => t.transaction_type === transactionType);}
+
+        // sort transacs by recency date -- newest to oldest
+        filteredTransactions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+        // disp transacs
+        if(filteredTransactions.length > 0){
+            transactionsList.innerHTML = '';
+            filteredTransactions.forEach(transaction =>{ transactionsList.appendChild(this.createTransactionElement(transaction));});
+        }
+        else{ transactionsList.innerHTML = '<div class="empty-state">No transactions found</div>';}
+    }
+
+    createTransactionElement(transaction){
+        const transactionEl = document.createElement('div');
+        transactionEl.className = 'transaction-item';
+
+        // get acc info
+        let accountInfo = 'Unknown Account';
+        const account = this.accounts.find(a => a.account_id === transaction.account_id);
+
+        if(account){ accountInfo = `${account.account_type} - ${account.account_number}`;}
+
+        // format transaction amount & determ css class
+        let amountClass = '';
+        let amountPrefix = '';
+        let detailsText = '';
+
+        switch(transaction.transaction_type){
+            case 'deposit':
+                amountClass = 'deposit';
+                amountPrefix = '+';
+                detailsText = `Deposit to ${accountInfo}`;
+                break;
+            case 'withdrawal':
+                amountClass = 'withdrawal';
+                amountPrefix = '-';
+                detailsText = `Withdrawal from ${accountInfo}`;
+                break;
+            case 'transfer':
+                // For transfers, determine direction by checking if this is the source account
+                // If transaction.account_id is mine and has a destination, it's OUTGOING (I sent money)
+                // If transaction.destination_account_id is mine, it's INCOMING (I received money)
+                
+                const myAccountIds = this.accounts.map(a => a.account_id);
+                const isMySourceAccount = myAccountIds.includes(transaction.account_id);
+                
+                if(isMySourceAccount && transaction.destination_account_id){
+                    // OUTGOING: I sent money
+                    amountClass = 'withdrawal';
+                    amountPrefix = '-';
+
+                    const destAccount = this.accounts.find(a => a.account_id === transaction.destination_account_id);
+                    const destAccountInfo = destAccount ?
+                        `${destAccount.account_type} - ${destAccount.account_number}` :
+                        'Unknown Account';
+
+                    detailsText = `Transfer from ${accountInfo} to ${destAccountInfo}`;
+                } else {
+                    // INCOMING: I received money
+                    amountClass = 'deposit';
+                    amountPrefix = '+';
+                    
+                    const sourceAccount = this.accounts.find(a => a.account_id === transaction.destination_account_id);
+                    const sourceAccountInfo = sourceAccount ?
+                        `${sourceAccount.account_type} - ${sourceAccount.account_number}` :
+                        'Unknown Account';
+                    
+                    detailsText = `Transfer from ${sourceAccountInfo} to ${accountInfo}`;
+                }
+                break;
+        }
+
+        // show hash if present on augmented responses (some routes now include it)
+        const hashInfo = transaction.transaction_hash ? `<div class="transaction-hash"><small>Hash: ${transaction.transaction_hash}</small></div>` : '';
+        transactionEl.innerHTML = `
+            <div class="transaction-info">
+                <div class="transaction-date">${this.formatDate(transaction.created_at)}</div>
+                <div class="transaction-details">${detailsText}</div>
+                <div class="transaction-desc">${transaction.description || 'No description'}</div>
+                ${hashInfo}
+            </div>
+            <div class="transaction-amount ${amountClass}">
+                ${amountPrefix}${this.formatCurrency(transaction.amount)}
+            </div>
+        `;
+
+        return transactionEl;
+    }
+
+    formatCurrency(amount) {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD'
+        }).format(amount);
+    }
+
+    formatDate(dateString){
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+}
+
+const transactionsComponent = new TransactionsComponent();
